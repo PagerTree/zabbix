@@ -10,8 +10,6 @@ zabbix_export:
           value: '{ALERT.SUBJECT}'
         - name: description
           value: '{ALERT.MESSAGE}'
-        - name: urgency
-          value: ''
         - name: event_id
           value: '{EVENT.ID}'
         # Possible values: 0 - Trigger, 1 - Discovery, 2 - Autoregistration, 3 - Internal, 4 - Service.
@@ -23,11 +21,11 @@ zabbix_export:
         # Let's use the trigger_id as the thirdparty id
         - name: event_tags
           value: '{EVENT.TAGS}'
+        # Possible values: 1 - problem, 0 - recovering.
+        - name: event_value
+          value: '{EVENT.VALUE}'
         - name: trigger_id
           value: '{TRIGGER.ID}'
-        # Possible values: 0 - trigger is in OK status, 1 - trigger is in Problem status.
-        - name: trigger_value
-          value: '{TRIGGER.VALUE}'
         - name: zabbix_url
           value: '{$ZABBIX.URL}'
       status: DISABLED
