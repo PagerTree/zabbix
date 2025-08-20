@@ -1,0 +1,186 @@
+zabbix_export:
+  version: '7.0'
+  media_types:
+    - name: PagerTree
+      type: WEBHOOK
+      parameters:
+        - name: .pagertree_integration_endpoint_url
+          value: '{ALERT.SENDTO}'
+        - name: title
+          value: '{ALERT.SUBJECT}'
+        - name: description
+          value: '{ALERT.MESSAGE}'
+        - name: urgency
+          value: ''
+        - name: event_id
+          value: '{EVENT.ID}'
+        # Possible values: 0 - Trigger, 1 - Discovery, 2 - Autoregistration, 3 - Internal, 4 - Service.
+        - name: event_source
+          value: '{EVENT.SOURCE}'
+        # Possible values: 0 - Not classified, 1 - Information, 2 - Warning, 3 - Average, 4 - High, 5 - Disaster.
+        - name: event_nseverity
+          value: '{EVENT.NSEVERITY}'
+        # Let's use the trigger_id as the thirdparty id
+        - name: event_tags
+          value: '{EVENT.TAGS}'
+        - name: trigger_id
+          value: '{TRIGGER.ID}'
+        # Possible values: 0 - trigger is in OK status, 1 - trigger is in Problem status.
+        - name: trigger_value
+          value: '{TRIGGER.VALUE}'
+        - name: zabbix_url
+          value: '{$ZABBIX.URL}'
+      status: DISABLED
+      script: |
+        try {
+            var result = { tags: {} },
+                params = JSON.parse(value),
+                req = new HttpRequest(),
+                resp = '';
+        
+            if (typeof params.HTTPProxy === 'string' && params.HTTPProxy.trim() !== '') {
+                req.setProxy(params.HTTPProxy);
+            }
+            var reqURL = params['.pagertree_integration_endpoint_url'];
+            if (!reqURL || (typeof reqURL === 'string' && reqURL.trim() === '')) {
+                throw 'incorrect value for variable ".pagertree_integration_endpoint_url". The value must be a non-empty string.';
+            }
+            delete params['.pagertree_integration_endpoint_url'];
+        
+            req.addHeader('Accept: application/json');
+            req.addHeader('Content-Type: application/json');
+        
+            Zabbix.log(4, '[PagerTree Webhook] Sending request to (' + reqURL + '):' + JSON.stringify(params));
+            resp = req.post(reqURL, JSON.stringify(params));
+            Zabbix.log(4, '[PagerTree Webhook] Received response with status code ' + req.getStatus() + '\n' + resp);
+        
+            if (req.getStatus() != 200) {
+                if (resp !== null && resp !== '') {
+                    try {
+                        resp = JSON.parse(resp);
+                    }
+                    catch (error) {
+                        Zabbix.log(4, '[PagerTree Webhook] Failed to parse response received from PagerTree');
+                        resp = null;
+                    }
+                }
+
+                if (resp !== null) {
+                    throw 'HTTP Error: ' + req.getStatus() + '. Error: ' + resp;
+                }
+                else {
+                    throw 'Unknown error. Check debug log for more information. HTTP Error: ' + req.getStatus();
+                }
+            }
+
+            return 'OK';
+        }
+        catch (error) {
+            Zabbix.log(4, '[PagerTree Webhook] Notification failed : ' + error);
+            throw 'PagerTree notification failed : ' + error;
+        }
+      description: |
+        Please refer to https://pagertree.com/docs/integration-guides/zabbix
+          
+        Set global macro {$ZABBIX.URL} with your Zabbix server URL.
+        Add a dedicated user with the media type "PagerTree".
+      message_templates:
+        - event_source: TRIGGERS
+          operation_mode: PROBLEM
+          subject: 'Problem: {EVENT.NAME}'
+          message: |
+            Problem started at {EVENT.TIME} on {EVENT.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Operational data: {EVENT.OPDATA}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: RECOVERY
+          subject: 'Resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Problem has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: UPDATE
+          subject: 'Updated problem in {EVENT.AGE}: {EVENT.NAME}'
+          message: |
+            {USER.FULLNAME} {EVENT.UPDATE.ACTION} problem at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            {EVENT.UPDATE.MESSAGE}
+            
+            Current problem status is {EVENT.STATUS}, age is {EVENT.AGE}, acknowledged: {EVENT.ACK.STATUS}.
+        - event_source: DISCOVERY
+          operation_mode: PROBLEM
+          subject: 'Discovery: {DISCOVERY.DEVICE.STATUS} {DISCOVERY.DEVICE.IPADDRESS}'
+          message: |
+            Discovery rule: {DISCOVERY.RULE.NAME}
+            
+            Device IP: {DISCOVERY.DEVICE.IPADDRESS}
+            Device DNS: {DISCOVERY.DEVICE.DNS}
+            Device status: {DISCOVERY.DEVICE.STATUS}
+            Device uptime: {DISCOVERY.DEVICE.UPTIME}
+            
+            Device service name: {DISCOVERY.SERVICE.NAME}
+            Device service port: {DISCOVERY.SERVICE.PORT}
+            Device service status: {DISCOVERY.SERVICE.STATUS}
+            Device service uptime: {DISCOVERY.SERVICE.UPTIME}
+        - event_source: AUTOREGISTRATION
+          operation_mode: PROBLEM
+          subject: 'Autoregistration: {HOST.HOST}'
+          message: |
+            Host name: {HOST.HOST}
+            Host IP: {HOST.IP}
+            Agent port: {HOST.PORT}
+        - event_source: INTERNAL
+          operation_mode: PROBLEM
+          subject: '[{EVENT.STATUS}] {EVENT.NAME}'
+          message: |
+            Problem started at {EVENT.TIME} on {EVENT.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Original problem ID: {EVENT.ID}
+        - event_source: INTERNAL
+          operation_mode: RECOVERY
+          subject: '[{EVENT.STATUS}] {EVENT.NAME}'
+          message: |
+            Problem has been resolved in {EVENT.DURATION} at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Original problem ID: {EVENT.ID}
+        - event_source: SERVICE
+          operation_mode: PROBLEM
+          subject: 'Service "{SERVICE.NAME}" problem: {EVENT.NAME}'
+          message: |
+            Service problem started at {EVENT.TIME} on {EVENT.DATE}
+            Service problem name: {EVENT.NAME}
+            Service: {SERVICE.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            Service description: {SERVICE.DESCRIPTION}
+            
+            {SERVICE.ROOTCAUSE}
+        - event_source: SERVICE
+          operation_mode: RECOVERY
+          subject: 'Service "{SERVICE.NAME}" resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Service "{SERVICE.NAME}" has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            Service description: {SERVICE.DESCRIPTION}
+        - event_source: SERVICE
+          operation_mode: UPDATE
+          subject: 'Changed "{SERVICE.NAME}" service status to {EVENT.UPDATE.SEVERITY} in {EVENT.AGE}'
+          message: |
+            Changed "{SERVICE.NAME}" service status to {EVENT.UPDATE.SEVERITY} at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            Current problem age is {EVENT.AGE}.
+            Service description: {SERVICE.DESCRIPTION}
+            
+            {SERVICE.ROOTCAUSE}
